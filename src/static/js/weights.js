@@ -13,14 +13,20 @@ export function applyWeights(root, mode) {
     root.eachBefore(node => {
         const kids = node.children;
         if (!kids || !kids.length) return;
+        
         const weights = kids.map(c => f(c._true || 0));
         let tot = 0;
         for (const w of weights) tot += w;
         const parentVal = node.value || 0;
-        if (tot <= 0) {
+        
+
+        // in case of no children (or all children have no lines), we divide the parent's value envely
+        if (tot == 0) {
             const each = parentVal / kids.length;
             kids.forEach(c => { c.value = each; });
         } else {
+            
+            // normalize so the children sum to the parent's value
             kids.forEach((c, i) => { c.value = parentVal * weights[i] / tot; });
         }
     });
