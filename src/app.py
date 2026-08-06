@@ -8,6 +8,10 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.abspath(os.path.join(BASE_DIR, '../data'))
 TOKEN_CSV_PATH = os.path.join(DATA_DIR, "tokenFilesFull.csv")
 
+# cache for the built tree, keyed by the csv's last-modified time
+# only rebuilds when the file actually changed since the last build
+_tree_cache = {"mtime": None, "tree": None}
+
 
 def tf_to_color(tf):
     try:
@@ -33,8 +37,7 @@ def index():
     return render_template('index.html')
 
 
-@app.route('/api/tree')
-def get_tree():
+def build_tree():
     try:
         df = pd.read_csv(TOKEN_CSV_PATH, sep=',')
     except Exception:
@@ -116,6 +119,17 @@ def get_tree():
     return jsonify(root)
 
 
+@app.route('/api/tree')
+def get_tree():
+    # rebuild only if the csv changed since the last cached build
+    mtime = os.path.getmtime(TOKEN_CSV_PATH)
+    if _tree_cache["tree"] is None or _tree_cache["mtime"] != mtime:
+        _tree_cache["tree"] = build_tree()
+        _tree_cache["mtime"] = mtime
+
+    return _tree_cache["tree"]
+
+
 if __name__ == '__main__':
-    # Running on 5001 so it does not conflict with the existing app on 5000
+    # running on 5001 so it does not conflict with the existing app on 5000
     app.run(debug=True, port=5001)
