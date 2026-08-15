@@ -5,6 +5,28 @@ body {
 }
 h1 { text-align: center; color: #1e293b; margin-bottom: 5px; }
 .subtitle { text-align: center; color: #64748b; margin-bottom: 16px; font-size: 14px; }
+.subtitle b { color: #475569; font-weight: 600; }
+
+/* The explainer is collapsed by default and its toggle sits inline in the
+   subtitle, so an unexpanded page costs no extra vertical space and the
+   treemap stays above the fold. */
+#intro-toggle {
+    margin-left: 6px; color: #3b82f6; text-decoration: none;
+    font-size: 13px; white-space: nowrap;
+}
+#intro-toggle:hover { text-decoration: underline; }
+#intro-toggle::after { content: " \25be"; }
+#intro-toggle[aria-expanded="true"]::after { content: " \25b4"; }
+
+.intro {
+    max-width: 1600px; margin: -6px auto 16px; padding: 14px 20px;
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
+    color: #475569; font-size: 13px; line-height: 1.55;
+}
+.intro p { margin: 0 0 9px; }
+.intro p:last-child { margin-bottom: 0; }
+.intro b { color: #1e293b; }
+.intro[hidden] { display: none; }
 
 #treemap-container {
     width: 100%; max-width: 1600px; height: 860px;

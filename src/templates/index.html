@@ -3,14 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>D3 Nested Treemap Experiment</title>
+    <title>Knowledge Distribution Treemap</title>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
 
-    <h1>Repository Treemap (D3.js Nested)</h1>
-    <p class="subtitle">Nested treemap with drill-down. Colors represent Pony Factor (Red = High Risk).</p>
+    <h1>Knowledge Distribution Treemap</h1>
+    <p class="subtitle">
+        Every rectangle is a file or folder: its <b>area</b> is how much code it holds,
+        its <b>colour</b> is how few people wrote that code.
+        <a id="intro-toggle" href="#" role="button" aria-expanded="false" aria-controls="intro">What am I looking at?</a>
+    </p>
+
+    <div id="intro" class="intro" hidden>
+        <p><b>The treemap.</b> Folders are boxes drawn around the boxes of what they
+        contain, so nesting on screen is nesting on disk. Area is proportional to size,
+        which means a directory takes exactly as much room as everything inside it.
+        Click a folder to zoom in, click the bar above the chart to zoom back out.</p>
+
+        <p><b>Pony Factor (TF).</b> The number of authors responsible for most of a
+        file's code. <b>TF&nbsp;=&nbsp;1</b> means essentially one person wrote it — if
+        they leave the project, nobody else knows that code. It is the "bus factor"
+        idea applied per file, so <b>lower is riskier</b>, and red marks the code most
+        dependent on a single person.</p>
+
+        <p><b>Directory sizing.</b> <i>Faithful</i> makes area exactly proportional to
+        size, which is honest but leaves small files invisible next to huge ones.
+        <i>Compressed</i> shrinks the differences so small siblings stay clickable —
+        useful for exploring, but areas are no longer literal.</p>
+    </div>
 
     <div class="controls">
         <span class="label">Repository:</span>

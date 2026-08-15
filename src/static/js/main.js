@@ -10,6 +10,17 @@ const height = container.parentElement.clientHeight - 46;
 const loadingEl = document.getElementById('loading');
 const repoSelect = document.getElementById('repo-select');
 
+// Collapsed explainer: the toggle lives inline in the subtitle so the treemap
+// keeps its position on load, and only moves down if the reader asks for it.
+const introToggle = document.getElementById('intro-toggle');
+const introBox = document.getElementById('intro');
+introToggle.addEventListener('click', ev => {
+    ev.preventDefault();
+    const open = introBox.hasAttribute('hidden');
+    introBox.toggleAttribute('hidden', !open);
+    introToggle.setAttribute('aria-expanded', String(open));
+});
+
 const treemap = d3.treemap()
     .paddingOuter(2)
     .paddingTop(HEADER_H)
@@ -69,6 +80,7 @@ function loadRepo(repo) {
             .sort((a, b) => (b.value || 0) - (a.value || 0));
 
         state.searchHighlight = null;      // belongs to the tree we just dropped
+        state.unit = data.unit || 'lines'; // tokens or lines, depending on the dataset
         const svg = freshSvg();
 
         const renderer = initRenderer(rootHierarchy, svg, treemap, width, height);

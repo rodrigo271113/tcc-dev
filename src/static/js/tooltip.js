@@ -1,9 +1,11 @@
+import { state } from './state.js';
+
 const tooltip = document.getElementById("tooltip");
 const fmt = d3.format(",");
 
 export function showTooltip(event, d) {
     const tf = d.data.tf != null ? (+d.data.tf).toFixed(1) : "n/a";
-    const size = d.data.actual_size || `${fmt(Math.round(d._true || 0))} lines`;
+    const size = d.data.actual_size || `${fmt(Math.round(d._true || 0))} ${state.unit}`;
     const kind = d.children ? "Directory" : "File";
     tooltip.innerHTML =
         `<div><b>${d.data.name}</b> <span style="color:#94a3b8">(${kind})</span></div>` +

@@ -106,12 +106,29 @@ def numeric_column(df, column, fallback):
     return val.mask(val.isna() & raw.notna(), float(fallback)).astype(float)
 
 
-def format_lines(size):
-    """Render a line count as a grouped string, e.g. 12345 -> '12,345 lines'."""
+# The `node_len_lines` column does NOT hold the same unit in every dataset, so
+# the label has to follow the repository rather than the column name.
+#   * the token dumps (tokenFilesFull) are token counts -- the root totals
+#     153,359,488 for a kernel of roughly 30-40M lines, i.e. ~5 per line, and
+#     the replication package they came from describes them as token-level.
+#   * the per-project exports really are line counts -- an ApacheHTTP changelog
+#     entry reads as 2, and those files are 2 lines long.
+# Mislabelling was harmless while only one dataset was reachable; with a
+# repository selector both units now sit in the same dropdown.
+TOKEN_REPOS = {"tokenFilesFull"}
+
+
+def repo_unit(repo):
+    """The unit `node_len_lines` is measured in for this repository."""
+    return "tokens" if repo in TOKEN_REPOS else "lines"
+
+
+def format_size(size, unit):
+    """Render a size as a grouped string, e.g. 12345 -> '12,345 tokens'."""
     try:
-        return f"{int(size):,} lines"
+        return f"{int(size):,} {unit}"
     except Exception:
-        return f"{size} lines"
+        return f"{size} {unit}"
 
 
 def list_repos():
@@ -193,7 +210,7 @@ def get_repos():
     return jsonify({"repos": list_repos(), "default": DEFAULT_REPO})
 
 # builds the tree from the csv file
-def build_tree(csv_path):
+def build_tree(csv_path, unit="lines"):
     df = read_repo_csv(csv_path)
 
     # The CSV already contains one row per node (directories AND files). Row
@@ -210,6 +227,9 @@ def build_tree(csv_path):
         "children": [],
         "path": "",
         "color": "#334155",
+        # Travels with the tree so the breadcrumb and the tooltip/search
+        # fallbacks label sizes the same way the server did.
+        "unit": unit,
     }
 
     # str() of a missing cell yields the literal "nan"; .astype(str) reproduces
@@ -256,7 +276,7 @@ def build_tree(csv_path):
     colors = tf_to_color(tf).tolist()
     tfs = tf.tolist()
     sizes = size.tolist()
-    actual_sizes = [format_lines(s) for s in sizes]
+    actual_sizes = [format_size(s, unit) for s in sizes]
 
     nodes = [
         {
@@ -321,7 +341,7 @@ def get_tree():
         return cached
 
     try:
-        tree = build_tree(csv_path)
+        tree = build_tree(csv_path, repo_unit(repo or DEFAULT_REPO))
     except Exception as exc:
         # A CSV whose header matches neither family (or is otherwise unusable)
         # is a data problem, not a crash: report it as JSON so the frontend can
