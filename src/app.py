@@ -55,7 +55,10 @@ def cache_get(csv_path, mtime):
     """Cached Response for this CSV, or None if absent/stale."""
     with _cache_lock:
         entry = _tree_cache.get(csv_path)
-        if entry is None or entry["mtime"] != mtime:
+        if entry is None:
+            return None
+        if entry["mtime"] != mtime:
+            _tree_cache.pop(csv_path, None)
             return None
         # Touch on read, so "oldest" below means least recently *used* rather
         # than least recently built.
