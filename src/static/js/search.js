@@ -6,11 +6,23 @@ const escapeHtml = s => (s || "").replace(/[&<>"]/g,
     c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 // Wires up the search box against the full (pre-lowercased) node list and
-// drives `render` to jump to whatever the user picks.
+// drives `render` to jump to whatever the user picks. Returns `setData`, used
+// when a different repository is loaded: the DOM listeners below are attached
+// once and then re-pointed at the new node list / renderer, instead of calling
+// setupSearch again (which would stack a second set of listeners, leaving the
+// previous repo's tree searchable alongside the current one).
 export function setupSearch(allNodes, render) {
     const searchInput = document.getElementById("search");
     const resultsBox = document.getElementById("search-results");
     let results = [], activeIdx = -1, searchTimer = null;
+
+    function setData(nextNodes, nextRender) {
+        allNodes = nextNodes;
+        render = nextRender;
+        clearTimeout(searchTimer);
+        searchInput.value = "";
+        closeResults();
+    }
 
     function doSearch(raw) {
         const q = raw.trim().toLowerCase();
@@ -90,4 +102,6 @@ export function setupSearch(allNodes, render) {
     document.addEventListener("click", ev => {
         if (!ev.target.closest(".search-wrap")) closeResults();
     });
+
+    return { setData };
 }
