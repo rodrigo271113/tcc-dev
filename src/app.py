@@ -1,4 +1,5 @@
 import os
+import numpy as np
 import pandas as pd
 from flask import Flask, render_template, jsonify, request
 
@@ -40,14 +41,34 @@ TREE_CACHE_MAX = 4
 
 
 def tf_to_color(tf):
-    try:
-        val = float(tf)
-        if val <= 1: return '#ef4444'   # Red (High Risk)
-        elif val <= 2: return '#eab308'  # Yellow
-        elif val <= 5: return '#22c55e'  # Green
-        else: return '#94a3b8'           # Grey (Low Risk)
-    except Exception:
-        return '#94a3b8'
+    """Bucket a whole column of Pony Factors into colours at once.
+
+    Same thresholds (and same order) as the legend in index.html -- keep both
+    in sync. NaN compares False against every bound, so unusable values land on
+    grey exactly like the old per-row float()/except fallback did.
+    """
+    val = np.asarray(tf, dtype=float)
+    return np.select(
+        [val <= 1, val <= 2, val <= 5],
+        ['#ef4444',   # Red (High Risk)
+         '#eab308',   # Yellow
+         '#22c55e'],  # Green
+        default='#94a3b8',  # Grey (Low Risk)
+    )
+
+
+def numeric_column(df, column, fallback):
+    """Vectorised stand-in for the per-row `float(row.get(column, default))`.
+
+    Missing column -> the whole column is the default. Cells that aren't
+    numbers at all fall back to `fallback`, like the old try/except; genuinely
+    empty cells stay NaN, which is what float(nan) produced before.
+    """
+    if column not in df.columns:
+        return pd.Series(float(fallback), index=df.index, dtype=float)
+    raw = df[column]
+    val = pd.to_numeric(raw, errors='coerce')
+    return val.mask(val.isna() & raw.notna(), float(fallback)).astype(float)
 
 
 def format_lines(size):
@@ -155,65 +176,92 @@ def build_tree(csv_path):
         "path": "",
         "color": "#334155",
     }
-    nodes = {"": root}
 
-    # Pass 1: materialise every row as a node keyed by its identifier.
-    for _, row in df.iterrows():
-        identifier = str(row.get("identifier", ""))
-        if identifier == "" or identifier == "nan":
-            # The root row (empty identifier): keep its own metadata.
-            try:
-                root["tf"] = float(row.get("pony_factor", 10))
-            except Exception:
-                pass
-            continue
+    # str() of a missing cell yields the literal "nan"; .astype(str) reproduces
+    # that exactly, so the empty/"nan" root-row check below still matches.
+    if "identifier" in df.columns:
+        identifier = df["identifier"].astype(str)
+    else:
+        identifier = pd.Series("", index=df.index, dtype=object)
 
-        node_name = str(row.get("node_name", identifier.split('/')[-1]))
-
-        try:
-            tf = float(row.get("pony_factor", 10))
-        except Exception:
-            tf = 10
-
-        try:
-            size = float(row.get("node_len_lines", 1))
-        except Exception:
-            size = 1
-
-        nodes[identifier] = {
-            "name": node_name,
-            "children": [],
-            "path": identifier,
-            "color": tf_to_color(tf),
-            "tf": tf,
-            "value": size,
-            "actual_size": format_lines(size),
-        }
-
-    # Pass 2: link each node to its parent. parent_id = identifier without the
-    # trailing "/node_name" segment (empty string -> the root node).
-    for identifier, node in list(nodes.items()):
-        if identifier == "":
-            continue
-        name = node["name"]
-        parent_id = identifier[:-(len(name) + 1)]
-        parent = nodes.get(parent_id, root)
-        parent["children"].append(node)
-
-    # Pass 3: D3's .sum() computes internal-node areas from leaf values. Drop the
-    # (redundant, subtree-total) "value" from any node that has children so the
-    # math is not skewed; keep colour/tf for display. Prune empty leaf arrays.
-    def cleanup(node):
-        if node.get("children"):
-            if "value" in node:
-                del node["value"]
-            for c in node["children"]:
-                cleanup(c)
+    # The root row (empty identifier) contributes its metadata to `root` only.
+    is_root_row = identifier.isin(["", "nan"])
+    if is_root_row.any():
+        if "pony_factor" in df.columns:
+            root_tf = df.loc[is_root_row, "pony_factor"].iloc[-1]
         else:
-            if "children" in node:
-                del node["children"]
+            root_tf = 10
+        try:
+            root["tf"] = float(root_tf)
+        except Exception:
+            pass
+        keep = ~is_root_row
+        df, identifier = df[keep], identifier[keep]
 
-    cleanup(root)
+    # `nodes[identifier] = ...` let a repeated id overwrite the earlier node
+    # dropping all but the last row keeps that "one node per path" guarantee
+    # (the frontend keys its data-join on path).
+    repeated = identifier.duplicated(keep="last")
+    if repeated.any():
+        keep = ~repeated
+        df, identifier = df[keep], identifier[keep]
+
+    if "node_name" in df.columns:
+        node_name = df["node_name"].astype(str)
+    else:
+        node_name = identifier.str.rsplit('/', n=1).str[-1]
+
+    tf = numeric_column(df, "pony_factor", 10)
+    size = numeric_column(df, "node_len_lines", 1)
+
+    # .tolist() hands back native Python str/float (not numpy scalars, which
+    # jsonify cannot serialise) and iterates far faster than a Series.
+    paths = identifier.tolist()
+    names = node_name.tolist()
+    colors = tf_to_color(tf).tolist()
+    tfs = tf.tolist()
+    sizes = size.tolist()
+    actual_sizes = [format_lines(s) for s in sizes]
+
+    nodes = [
+        {
+            "name": name,
+            "path": path,
+            "color": color,
+            "tf": node_tf,
+            "value": node_size,
+            "actual_size": actual_size,
+        }
+        for name, path, color, node_tf, node_size, actual_size
+        in zip(names, paths, colors, tfs, sizes, actual_sizes)
+    ]
+
+    # parent id = identifier minus the trailing "/<node_name>" segment. Sliced
+    # by node_name's length rather than split on "/": node_name is what makes
+    # this rule exact, and re-deriving the segment from the string is what
+    # produced phantom duplicate directories before. (Measured: pandas'
+    # .str.rsplit is ~2x slower here anyway -- .str is a Python loop too.)
+    parent_ids = [path[:max(0, len(path) - len(name) - 1)]
+                  for path, name in zip(paths, names)]
+
+    by_path = dict(zip(paths, nodes))
+    by_path[""] = root
+
+    # Attach each node to its parent (unknown parent -> root, as before). A node
+    # only grows a "children" list when it actually gets one, so leaves never
+    # carry an empty array; and the first child is where a node is revealed to
+    # be a directory, so that is where its (redundant, subtree-total) "value"
+    # goes away -- D3's .sum() must derive internal-node area from leaves alone.
+    for parent_id, node in zip(parent_ids, nodes):
+        parent = by_path.get(parent_id, root)
+        children = parent.get("children")
+        if children is None:
+            parent.pop("value", None)
+            children = parent["children"] = []
+        children.append(node)
+
+    if not root["children"]:
+        del root["children"]
 
     # serializing the json here (rather than in the route) keeps this the single unit cache can memoize
     return jsonify(root)
