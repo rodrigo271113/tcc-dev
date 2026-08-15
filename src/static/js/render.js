@@ -1,4 +1,4 @@
-import { MAX_DEPTH, HEADER_H, MIN_PX, STD_DIR_FONT, STD_LEAF_FONT, HEAVY_TILES } from './config.js';
+import { MAX_DEPTH, HEADER_H, MIN_PX, STD_DIR_FONT, STD_LEAF_FONT, HEAVY_TILES, LAYOUT_CACHE_MAX } from './config.js';
 import { state } from './state.js';
 import { applyWeights } from './weights.js';
 import { fitFontSize, fitWrapped } from './text-fit.js';
@@ -46,19 +46,8 @@ export function initRenderer(rootHierarchy, svg, treemap, width, height) {
 
         // Re-layout the focused subtree to fill the canvas each drill-down,
         // so deep trees stay legible instead of being rescaled from a tiny box.
-        const local = d3.hierarchy(focus.data).sum(d => d.value || 0);
-        // Keep every node's TRUE aggregate size (linear, additive) for the
-        // breadcrumb/weights; d3's .value gets overwritten with layout weights.
-        local.each(d => { d._true = d.value || 0; });
-        local.sort((a, b) => b._true - a._true);
-
-        // Assign per-level layout weights. 'linear' reproduces true areas
-        // exactly; 'log' compresses each node relative to its siblings while
-        // preserving the parent == Σchildren invariant at every level, so the
-        // tiling stays gap-free and never rewards file count.
-        applyWeights(local, state.sizeMode);
-
-        treemap.size([width, height])(local);
+        // Memoized (see getLayout): revisiting a node recomputes nothing.
+        const local = getLayout(focus);
 
         // Draw the focus subtree down to MAX_DEPTH levels, skipping tiles too
         // small to see or click. Safe because a child is always smaller than
@@ -210,6 +199,73 @@ export function initRenderer(rootHierarchy, svg, treemap, width, height) {
         }
 
         appendDepth(1);
+    }
+
+    // ---- Layout cache ---------------------------------------------------
+    // Computing a focused subtree's layout (hierarchy + sum + sort +
+    // applyWeights + treemap) is a pure function of (focus, sizeMode, canvas):
+    // the same three inputs always produce the exact same geometry. But we
+    // recompute it constantly -- clicking the breadcrumb back out, re-entering
+    // a directory visited earlier, or toggling linear/log back to a combination
+    // already seen all redo identical work. So keep the finished hierarchy.
+    //
+    // Bounded with LRU, because an entry holds *every* node of its subtree,
+    // not just the tiles drawn (~67k node objects for the root of the kernel
+    // dataset) -- an unbounded cache would grow into a memory leak over a long
+    // drill-down session. A Map iterates in insertion order, which gives LRU
+    // almost for free: delete + re-set on a hit moves an entry to the newest
+    // end, so the oldest key is always `keys().next().value` and can be
+    // dropped once we exceed capacity.
+    const layoutCache = new Map();
+
+    function layoutKey(focus) {
+        // sizeMode belongs in the key: it changes every node's weight, hence
+        // the geometry. width/height are read here rather than captured once
+        // so that they stay honest -- they're fixed today (computed once at
+        // load in main.js, no resize handler yet), but if a resize fix ever
+        // makes them mutable, a changed canvas produces a different key
+        // instead of silently serving stale coordinates.
+        // state.searchHighlight deliberately is NOT in the key: it affects
+        // only the visibility filter and the "hl" class, never the layout, and
+        // render() recomputes both on every pass -- including on a cache hit --
+        // so a cached hierarchy can still reveal/highlight whichever tile the
+        // current search asks for.
+        return `${width}x${height}|${state.sizeMode}|${focus.data.path}`;
+    }
+
+    function getLayout(focus) {
+        const key = layoutKey(focus);
+        const cached = layoutCache.get(key);
+        if (cached) {
+            layoutCache.delete(key);
+            layoutCache.set(key, cached);   // re-insert => most recently used
+            return cached;
+        }
+
+        const local = d3.hierarchy(focus.data).sum(d => d.value || 0);
+        // Keep every node's TRUE aggregate size (linear, additive) for the
+        // breadcrumb/weights; d3's .value gets overwritten with layout weights.
+        local.each(d => { d._true = d.value || 0; });
+        local.sort((a, b) => b._true - a._true);
+
+        // Assign per-level layout weights. 'linear' reproduces true areas
+        // exactly; 'log' compresses each node relative to its siblings while
+        // preserving the parent == Σchildren invariant at every level, so the
+        // tiling stays gap-free and never rewards file count.
+        applyWeights(local, state.sizeMode);
+
+        treemap.size([width, height])(local);
+
+        // Safe to hand the same node objects out again later: render() only
+        // *reads* them (d3's data-join stores the datum on the element, it
+        // doesn't write back to it), and every miss builds a fresh
+        // d3.hierarchy, so entries never share node objects with each other or
+        // with rootHierarchy -- only the read-only .data payloads underneath.
+        layoutCache.set(key, local);
+        while (layoutCache.size > LAYOUT_CACHE_MAX) {
+            layoutCache.delete(layoutCache.keys().next().value);   // evict LRU
+        }
+        return local;
     }
 
     function setSizeMode(mode) {

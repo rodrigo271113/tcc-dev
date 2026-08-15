@@ -131,3 +131,4 @@ A search input over the in-memory hierarchy (no backend change):
 | `STD_DIR_FONT` / `STD_LEAF_FONT` | Preferred label sizes |
 | `MIN_LINE_CHARS` | Min chars per wrapped line (anti-shred) |
 | `HEAVY_TILES` | Tile count above which geometry snaps (1250) |
+| `LAYOUT_CACHE_MAX` | Computed subtree layouts kept in the LRU cache (24) |
