@@ -130,13 +130,13 @@ def read_repo_csv(csv_path):
 def index():
     return render_template('index.html')
 
-
+# populates the selector w/ the available repositories
 @app.route('/api/repos')
 def get_repos():
     """The repositories the selector can offer, plus the one loaded by default."""
     return jsonify({"repos": list_repos(), "default": DEFAULT_REPO})
 
-
+# builds the tree from the csv file
 def build_tree(csv_path):
     df = read_repo_csv(csv_path)
 
@@ -215,8 +215,7 @@ def build_tree(csv_path):
 
     cleanup(root)
 
-    # Serialising here (rather than in the route) keeps this the single unit a
-    # future per-repo cache can memoise: the finished Response, not the dict.
+    # serializing the json here (rather than in the route) keeps this the single unit cache can memoize
     return jsonify(root)
 
 
@@ -229,7 +228,7 @@ def get_tree():
     if not os.path.isfile(csv_path):
         return jsonify({"error": f"no data file for repository: {repo!r}"}), 404
 
-    # Serve the cached Response when this repo's CSV has not changed. Caching
+    # serve the cached Response when this repo's CSV has not changed. caching
     # the finished Response rather than the dict matters: serialising the tree
     # is ~0.3s on its own, so memoising only the dict would leave that on every
     # request.
