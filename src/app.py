@@ -169,12 +169,6 @@ def build_tree(csv_path):
     # legacy Plotly backend uses. We build the tree directly from that, instead
     # of re-deriving ancestry by string-splitting (which mismatched the leading
     # slash and produced phantom duplicate directories).
-    #
-    # Everything that can be expressed a column at a time (stringification,
-    # numeric coercion, colour bucketing) is done in pandas/numpy; the rows are
-    # then handed to plain Python as lists. iterrows() built a Series per row
-    # and was ~92% of the old build time -- the work below is the same work
-    # without that per-row object churn.
 
     root = {
         "name": "Project Root",
@@ -204,7 +198,7 @@ def build_tree(csv_path):
         keep = ~is_root_row
         df, identifier = df[keep], identifier[keep]
 
-    # `nodes[identifier] = ...` let a repeated id overwrite the earlier node;
+    # `nodes[identifier] = ...` let a repeated id overwrite the earlier node
     # dropping all but the last row keeps that "one node per path" guarantee
     # (the frontend keys its data-join on path).
     repeated = identifier.duplicated(keep="last")
