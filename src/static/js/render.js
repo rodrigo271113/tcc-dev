@@ -220,11 +220,10 @@ export function initRenderer(rootHierarchy, svg, treemap, width, height) {
 
     function layoutKey(focus) {
         // sizeMode belongs in the key: it changes every node's weight, hence
-        // the geometry. width/height are read here rather than captured once
-        // so that they stay honest -- they're fixed today (computed once at
-        // load in main.js, no resize handler yet), but if a resize fix ever
-        // makes them mutable, a changed canvas produces a different key
-        // instead of silently serving stale coordinates.
+        // the geometry. width/height are included so layouts computed for one
+        // canvas size aren't reused for another; if a future resize handler
+        // changes the canvas size, it should recreate the renderer (or update
+        // width/height) so getLayout() recomputes with the new dimensions.
         // state.searchHighlight deliberately is NOT in the key: it affects
         // only the visibility filter and the "hl" class, never the layout, and
         // render() recomputes both on every pass -- including on a cache hit --
