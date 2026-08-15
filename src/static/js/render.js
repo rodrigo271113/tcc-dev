@@ -70,7 +70,7 @@ export function initRenderer(rootHierarchy, svg, treemap, width, height) {
         // Breadcrumb reflects the *focused* node within the full tree.
         const bcText = document.getElementById('bc-text');
         bcText.innerHTML = `<b>${fullPath(focus) || 'Project Root'}</b>` +
-            ` &nbsp;|&nbsp; ${fmt(Math.round(focus.value || 0))} lines`;
+            ` &nbsp;|&nbsp; ${fmt(Math.round(focus.value || 0))} ${state.unit}`;
         document.getElementById('breadcrumb').onclick = () => {
             if (focus.parent) { state.searchHighlight = null; render(focus.parent); }
         };

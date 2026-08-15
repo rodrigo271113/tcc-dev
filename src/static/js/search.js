@@ -52,7 +52,7 @@ export function setupSearch(allNodes, render) {
         }
         resultsBox.innerHTML = results.map((n, idx) => {
             const kind = n.children ? "folder" : "file";
-            const size = n.data.actual_size || `${fmt(Math.round(n.value || 0))} lines`;
+            const size = n.data.actual_size || `${fmt(Math.round(n.value || 0))} ${state.unit}`;
             return `<div class="sr-item${idx === activeIdx ? ' active' : ''}" data-idx="${idx}">
                 <div class="sr-name">${escapeHtml(n.data.name)}<span class="kind">${kind} &middot; ${size}</span></div>
                 <div class="sr-path">${escapeHtml(n.data.path)}</div></div>`;
