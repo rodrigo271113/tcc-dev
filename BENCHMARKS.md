@@ -144,23 +144,55 @@ cruzamento O(n²) contra a varredura real (~2 min, 0 divergências em todos os
 irmão já aberto, toggle linear/log já calculado). Um cache LRU por
 `path + sizeMode` elimina o recálculo.
 
-**Status:** implementação em andamento. Procedimento de medição a seguir:
+**Método:** Chromium real via puppeteer, canvas 1560×814, 5 pares
+frio/quente controlados a partir de estados idênticos. Chave do cache:
+`width x height | sizeMode | path`; capacidade `LAYOUT_CACHE_MAX = 24` em
+`config.js`.
 
-1. Instrumentar com `performance.now()` em volta do bloco de layout em
-   `render.js`, contando hits e misses.
-2. Medir o custo de um layout frio na raiz e num diretório médio.
-3. Medir o custo de um cache hit nos mesmos nós.
-4. Percorrer: entrar em diretório → breadcrumb → entrar em irmão → alternar
-   linear/log → busca que salta para arquivo. Conferir ausência de artefato
-   visual (os bugs de tween obsoleto que o `CHANGELOG.md` já corrigiu são
-   exatamente o que uma falha de cache reintroduz).
-5. Comparar contra o custo de construção de DOM em `appendDepth`, que é o
-   suspeito alternativo de gargalo — se o layout já for barato perto dele, o
-   cache não se justifica.
+Custo só do bloco de layout:
 
-**Critério de aceite:** o ganho precisa ser perceptível *e* o percurso acima
-precisa ficar livre de artefatos. Se o layout não for o gargalo, registrar o
-resultado negativo — é informação válida para a monografia.
+| Subárvore | nós | frio | cacheado |
+|---|---|---|---|
+| raiz | 66.943 | 73–99 ms (mediana ~88) | **0,0–0,1 ms** |
+| `/drivers` | 35.352 | 55–66 ms | 0,0–0,1 ms |
+| `/sound` | 2.824 | 3,6–6,4 ms | 0,0–0,1 ms |
+
+Custo de bloqueio síncrono do render inteiro:
+
+| Vista | frio | cacheado |
+|---|---|---|
+| raiz (2.703 tiles) | ~147 ms | **~52 ms** |
+| `/drivers` (3.507 tiles) | ~160 ms | **~93 ms** |
+| `/sound` (1.948 tiles) | ~55 ms | ~50 ms |
+| toggle linear↔log na raiz | 73–96 ms de layout | **0,0 ms** |
+
+**Veredito: vale manter, com ressalva.** Na raiz o layout era ~60–65% do tempo
+de bloqueio, e o cache remove praticamente todo ele. O toggle linear/log, que
+recomputava a árvore de 67k nós a cada clique, passa a ser gratuito.
+
+**Ressalva medida — a suspeita sobre o `appendDepth` se confirma em parte:**
+depois do trecho síncrono, a construção de DOM continua nos frames seguintes
+(`appendDepth(2)` + `appendDepth(3)` custam ~35 ms + ~140 ms na raiz) e o cache
+não faz nada por ela. O tempo até a pintura completa da raiz cai de ~360 ms
+para ~260 ms — **27%, não 65%**. O cache ataca o bloqueio, não o total.
+
+Para diretórios pequenos o ganho é desprezível (~5 ms de ~55 ms). Esses renders
+são dominados por `group.exit()` (~23 ms) e `positionNodes` sobre a seleção de
+update (~17 ms, majoritariamente ajuste de texto no canvas) — **é aí que está o
+próximo ganho, não no layout.**
+
+**Verificação de corretude:** geometria byte-idêntica entre frio e cacheado em
+todos os tiles (raiz, `/sound`, modo log), inclusive após estourar a capacidade.
+`state.searchHighlight` deliberadamente fora da chave — testado o caso que
+poderia falhar (buscar um arquivo, depois um irmão com o pai já cacheado): o
+layout cacheado descarta o `hl` antigo e destaca o novo corretamente. Zoom
+rápido entrando/saindo a 40–70 ms não deixou tiles presos em opacidade parcial
+(o caso de regressão das guardas de interrupção). Console limpo.
+
+**Memória:** uma entrada guarda todos os nós da subárvore, não só os tiles
+desenhados — a entrada da raiz são ~67k objetos. Heap medido: 31 MB novo contra
+83 MB com o cache cheio de 24 entradas. Daí a capacidade ser 24 e estar em
+`config.js`, documentada, para ser trivial de baixar.
 
 ---
 
