@@ -26,12 +26,18 @@ export function initRenderer(rootHierarchy, svg, treemap, width, height) {
     let currentFocus = null;   // the node currently zoomed into (for re-render on toggle)
     let renderToken = 0;       // bumps each render so a stale progressive pass can bail out
 
+    // path -> node index over the full (un-capped) hierarchy, walked once here
+    // (~27ms for 67k nodes) instead of on every click. Paths are already this
+    // app's node key (data-join, search highlight, tooltip), so one entry per
+    // node is all the drill-down lookup below needs. Last entry wins on a
+    // duplicate path, matching the scan this replaces (it never early-exited).
+    const byPath = new Map();
+    rootHierarchy.each(n => byPath.set(n.data.path, n));
+
     // Locate a node by path within the full (un-capped) hierarchy so we can
     // drill past the depth cap.
-    function findInFull(focus, path) {
-        let found = null;
-        rootHierarchy.each(n => { if (n.data.path === path) found = n; });
-        return found;
+    function findInFull(path) {
+        return byPath.get(path) || null;
     }
 
     function render(focus) {
@@ -188,7 +194,7 @@ export function initRenderer(rootHierarchy, svg, treemap, width, height) {
                     event.stopPropagation();
                     // Drill into any directory (has children in the full tree,
                     // even if we hit the depth cap here).
-                    const target = findInFull(focus, d.data.path);
+                    const target = findInFull(d.data.path);
                     if (target && target.children && target.children.length) {
                         state.searchHighlight = null;
                         render(target);
