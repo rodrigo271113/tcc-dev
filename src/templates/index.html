@@ -13,6 +13,10 @@
     <p class="subtitle">Nested treemap with drill-down. Colors represent Pony Factor (Red = High Risk).</p>
 
     <div class="controls">
+        <span class="label">Repository:</span>
+        <select id="repo-select" aria-label="Repository" disabled>
+            <option value="">Loading&hellip;</option>
+        </select>
         <span class="label">Directory sizing:</span>
         <label><input type="radio" name="sizemode" value="linear" checked> Faithful (linear)</label>
         <label><input type="radio" name="sizemode" value="log"> Compressed (log, per-level)</label>

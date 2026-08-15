@@ -37,7 +37,10 @@ h1 { text-align: center; color: #1e293b; margin-bottom: 5px; }
     align-items: center; justify-content: center;
     background: rgba(255,255,255,0.9); font-size: 20px;
     font-weight: bold; color: #3b82f6; z-index: 10;
+    text-align: center; padding: 0 24px;
 }
+/* Same overlay, used to report a failed /api/tree load instead of spinning forever. */
+#loading.error { color: #b91c1c; font-size: 16px; }
 
 /* Controls */
 .controls {
@@ -45,6 +48,13 @@ h1 { text-align: center; color: #1e293b; margin-bottom: 5px; }
     margin: 0 auto 14px; font-size: 13px; color: #475569;
 }
 .controls .label { font-weight: 600; color: #334155; }
+.controls select {
+    padding: 5px 8px; border: 1px solid #cbd5e1; border-radius: 6px;
+    background: #fff; color: #0f172a; font-size: 13px;
+    font-family: inherit; cursor: pointer; max-width: 260px;
+}
+.controls select:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.15); }
+.controls select:disabled { color: #94a3b8; cursor: progress; }
 .controls label { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
 .controls input { cursor: pointer; }
 
