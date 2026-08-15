@@ -1,4 +1,6 @@
 import os
+import threading
+
 import numpy as np
 import pandas as pd
 from flask import Flask, render_template, jsonify, request
@@ -38,6 +40,36 @@ CSV_SEPARATORS = ('·', ',')
 # order makes eviction of the oldest entry a one-liner.
 _tree_cache = {}
 TREE_CACHE_MAX = 4
+
+# Requests run on threads (app.run defaults to threaded=True), so every touch of
+# _tree_cache goes through this lock. Individually a dict get/set is atomic under
+# the GIL, but the eviction below is not: it reads the oldest key and then pops
+# it as two separate steps, so two threads evicting at once could have the
+# second pop a key the first already removed, raising KeyError mid-request.
+# The build itself deliberately runs OUTSIDE the lock -- holding it across a
+# multi-second build would make one slow repository block every other one.
+_cache_lock = threading.Lock()
+
+
+def cache_get(csv_path, mtime):
+    """Cached Response for this CSV, or None if absent/stale."""
+    with _cache_lock:
+        entry = _tree_cache.get(csv_path)
+        if entry is None or entry["mtime"] != mtime:
+            return None
+        # Touch on read, so "oldest" below means least recently *used* rather
+        # than least recently built.
+        _tree_cache.pop(csv_path)
+        _tree_cache[csv_path] = entry
+        return entry["tree"]
+
+
+def cache_put(csv_path, mtime, tree):
+    with _cache_lock:
+        _tree_cache.pop(csv_path, None)      # re-insert at the newest end
+        _tree_cache[csv_path] = {"mtime": mtime, "tree": tree}
+        while len(_tree_cache) > TREE_CACHE_MAX:
+            _tree_cache.pop(next(iter(_tree_cache)))
 
 
 def tf_to_color(tf):
@@ -281,9 +313,9 @@ def get_tree():
     # is ~0.3s on its own, so memoising only the dict would leave that on every
     # request.
     mtime = os.path.getmtime(csv_path)
-    cached = _tree_cache.get(csv_path)
-    if cached is not None and cached["mtime"] == mtime:
-        return cached["tree"]
+    cached = cache_get(csv_path, mtime)
+    if cached is not None:
+        return cached
 
     try:
         tree = build_tree(csv_path)
@@ -294,10 +326,7 @@ def get_tree():
         app.logger.exception("failed to build tree for %s", csv_path)
         return jsonify({"error": f"could not read repository {repo or DEFAULT_REPO!r}: {exc}"}), 500
 
-    _tree_cache.pop(csv_path, None)          # re-insert at the newest end
-    _tree_cache[csv_path] = {"mtime": mtime, "tree": tree}
-    while len(_tree_cache) > TREE_CACHE_MAX:
-        _tree_cache.pop(next(iter(_tree_cache)))
+    cache_put(csv_path, mtime, tree)
     return tree
 
 
