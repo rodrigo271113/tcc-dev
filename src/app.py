@@ -232,15 +232,21 @@ def build_tree(csv_path, unit="lines"):
         "unit": unit,
     }
 
-    # str() of a missing cell yields the literal "nan"; .astype(str) reproduces
-    # that exactly, so the empty/"nan" root-row check below still matches.
+    # Missing cells must become "" up front: under pandas' pre-3.0 object
+    # dtype, .astype(str) turned a missing cell into the literal string "nan",
+    # which the root-row check below used to rely on. Pandas 3's default
+    # string dtype broke that -- .astype(str) is a no-op on a "str"-dtype
+    # column, so a missing cell stays a float NaN and later crashes any
+    # len()/string op downstream (as it did for the root row's identifier).
+    # Mapping NaN to "" first sidesteps that dtype-dependent behaviour.
     if "identifier" in df.columns:
-        identifier = df["identifier"].astype(str)
+        raw_identifier = df["identifier"]
+        identifier = raw_identifier.where(raw_identifier.notna(), "").astype(str)
     else:
         identifier = pd.Series("", index=df.index, dtype=object)
 
     # The root row (empty identifier) contributes its metadata to `root` only.
-    is_root_row = identifier.isin(["", "nan"])
+    is_root_row = identifier == ""
     if is_root_row.any():
         if "pony_factor" in df.columns:
             root_tf = df.loc[is_root_row, "pony_factor"].iloc[-1]
@@ -262,7 +268,8 @@ def build_tree(csv_path, unit="lines"):
         df, identifier = df[keep], identifier[keep]
 
     if "node_name" in df.columns:
-        node_name = df["node_name"].astype(str)
+        raw_node_name = df["node_name"]
+        node_name = raw_node_name.where(raw_node_name.notna(), "").astype(str)
     else:
         node_name = identifier.str.rsplit('/', n=1).str[-1]
 
