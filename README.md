@@ -10,6 +10,10 @@ Built for a TCC (USP undergraduate thesis) on visualisations for this metric.
 It is a rework of an earlier Plotly proof-of-concept; see `../CHANGELOG.md`
 for how the rendering evolved.
 
+Example (Python):
+<img width="2944" height="1790" alt="image" src="https://github.com/user-attachments/assets/ce39cf82-0b6d-4ef4-90c8-64c39dc2060f" />
+
+
 ## Requirements
 
 - Python 3.10+
