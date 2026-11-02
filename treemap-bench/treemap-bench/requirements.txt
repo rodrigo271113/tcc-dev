@@ -1,0 +1,12 @@
+# Unpinned so pip picks wheels that match your Python (tested on CPython 3.14).
+# If scipy has no wheel for your interpreter, drop it — analysis/analyze.py
+# degrades gracefully (skips the Mann-Whitney/Cliff's-delta table).
+playwright
+httpx
+PyYAML
+pandas
+pyarrow
+numpy
+matplotlib
+scipy
+jupyter

@@ -1,0 +1,22 @@
+# Brings up the rep_pack_march6 Plotly treemap server for benchmarking.
+# PLOTLY_REPO is exported by the harness (points at the rep_pack_march6 checkout).
+name: tmbench-plotly
+
+services:
+  plotly:
+    build:
+      context: .
+      dockerfile: Dockerfile.plotly
+      network: host   # build-time DNS fails on the default bridge here
+    image: tmbench-plotly:latest
+    working_dir: /src
+    environment:
+      PYTHONPATH: /src
+      FLASK_DEBUG: "0"
+    volumes:
+      - ${PLOTLY_REPO}/server/src:/src:ro
+      - ${PLOTLY_REPO}/data:/data:ro
+    ports:
+      - "5005:5000"
+    command: >
+      flask --app app.py run --host=0.0.0.0 --port=5000

@@ -1,0 +1,20 @@
+# Brings up the DUKS dev server for benchmarking, on host port 5055
+# (macOS ControlCenter/AirPlay squats on 5000). Mirrors DUKS' own
+# dev-compose.yaml. DUKS_REPO is exported by the harness.
+name: tmbench-duks
+
+services:
+  server:
+    build:
+      context: ${DUKS_REPO}/server
+      dockerfile: Dockerfile
+      network: host   # build-time DNS fails on the default bridge here
+    image: duks-server-dev:latest
+    environment:
+      - DEBUG=true
+    volumes:
+      - ${DUKS_REPO}/data:/data:z
+      - ${DUKS_REPO}/server:/app:z
+    ports:
+      - "5055:5000"
+    command: uv run python app.py

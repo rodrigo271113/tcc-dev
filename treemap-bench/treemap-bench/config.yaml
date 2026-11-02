@@ -1,0 +1,107 @@
+# Treemap benchmark configuration.
+# Paths to the two implementations under test (relative to this file or absolute).
+paths:
+  plotly_repo: ../rep_pack_march6      # the Plotly implementation (rep_pack_march6)
+  duks_repo:   ../DUKS                 # the D3 implementation (DUKS)
+
+# ---------------------------------------------------------------------------
+# Repository ladder. `plotly` / `duks` are the identifiers each server expects
+# (CSV basename). `nodes` is the CSV row count (~ node count), used as the
+# scalability x-axis. Trim this list with --repos on the CLI for short runs.
+# ---------------------------------------------------------------------------
+repos:
+  - {name: socketio,      plotly: "socket.io",     duks: "socket.io",     nodes: 965}
+  - {name: numpy,         plotly: "numpy",         duks: "numpy",         nodes: 2346}
+  - {name: threejs,       plotly: "three.js",      duks: "three.js",      nodes: 4946}
+  - {name: icu,           plotly: "icu",           duks: "icu",           nodes: 12792}
+  - {name: pytorch,       plotly: "pytorch",       duks: "pytorch",       nodes: 22417}
+  - {name: elasticsearch, plotly: "elasticsearch", duks: "elasticsearch", nodes: 48348}
+  # Linux kernel, token-level dump. tokenFilesFull.csv is comma-separated, so
+  # Plotly's /any/<proj> (which assumes the interpunct export) can't read it --
+  # use Plotly's dedicated "/" route (the Linux view it actually ships,
+  # maxdepth=4). DUKS serves it as its own default repo.
+  - name: linux_tokens
+    plotly: "tokenFilesFull"
+    duks: "tokenFilesFull"
+    nodes: 66944
+    url_override:    {plotly: "{base}/"}
+    server_override: {plotly: "{base}/"}
+  - {name: hhvm,          plotly: "hhvm",          duks: "hhvm",          nodes: 83072}
+  - {name: chromium,      plotly: "Chromium",      duks: "Chromium",      nodes: 146202}
+  # Ceiling test: ~420k nodes. Plotly inlines every node into the HTML with no
+  # cache -- expect this one to be very slow or to time out (that is a result).
+  - {name: firefox,       plotly: "Firefox",       duks: "Firefox",       nodes: 419573}
+
+apps:
+  plotly:
+    compose_file: harness/compose/plotly.yaml   # relative to this repo
+    compose_cwd: .
+    project: tmbench-plotly
+    container: tmbench-plotly-plotly-1
+    base_url: http://localhost:5005
+    url_template: "{base}/any/{repo}"
+    container_selector: "#plotlyCanvas"
+    # Tiles, not just the trace group: Plotly creates <g class="trace"> and then
+    # an empty SVG when the input is too big to draw (146k+ nodes), so a gate on
+    # g.trace reports a blank page as a fast successful load.
+    tile_selector: "#plotlyCanvas .slice"
+    ready_js: "document.querySelectorAll('#plotlyCanvas .slice').length >= 20"
+    # server-side endpoint measured directly (no browser) for server latency:
+    server_url_template: "{base}/any/{repo}"
+    has_server_cache: false
+  duks:
+    compose_file: harness/compose/duks.yaml      # mirrors DUKS' dev-compose, host port 5055
+    compose_cwd: .
+    project: tmbench-duks
+    container: tmbench-duks-server-1
+    base_url: http://localhost:5055
+    url_template: "{base}/knowledge-map"
+    container_selector: "#chart"
+    tile_selector: "#chart g.node"
+    ready_js: "document.querySelectorAll('#chart g.node').length >= 20"
+    server_url_template: "{base}/api/knowledge-map/tree?repo={repo}"
+    has_server_cache: true
+
+viewport: {width: 1600, height: 950}
+
+# Browser phase --------------------------------------------------------------
+scenarios: [load, zoom_in, zoom_out, zoom_toggle]
+trials: 15                     # median/IQR/p95 are stable well before 20 here
+warmup_trials: 3
+headless: true                 # set false for the representative final run
+interleave: true               # alternate apps between trials
+
+settle_quiet_ms_load: 600
+settle_quiet_ms_interaction: 300
+load_timeout_ms: 120000
+# Budget for the ready gate alone (tiles on screen). Separate from
+# load_timeout_ms so a non-rendering app is recorded as a failure in a minute
+# instead of burning the full navigation budget on every trial.
+ready_timeout_ms: 60000
+# After this many gate failures for one app+repo, the remaining cells of that
+# pair are recorded as render_failed without being run. "Does not render at
+# this size" is established by then; re-measuring it costs hours.
+abandon_after_failures: 2
+interaction_timeout_ms: 30000
+
+drill_depth: 3                 # levels the zoom_in scenario descends
+toggle_reps: 8                 # in/out cycles for the zoom_toggle scenario
+
+depth_normalize: null          # null = as-shipped; set to 3 to force Plotly maxdepth=3
+
+throttle_profiles:
+  - {name: native, cpu: 1, net: null}
+  # - {name: cpu4x, cpu: 4, net: null}
+  # - {name: cpu4x_3g, cpu: 4, net: {download: 1600000, upload: 750000, latency: 150}}
+
+# Server phase --------------------------------------------------------------
+server_timing:
+  enabled: true
+  warm_samples: 15
+  duks_cold_restarts: 3         # restart the DUKS container N times, 1 cold hit each
+  plotly_samples: 15            # Plotly has no cache; every hit is cold-ish
+  timeout_s: 180
+
+save_screenshots: true
+save_trace: false
+teardown: false                # leave containers running after the run
