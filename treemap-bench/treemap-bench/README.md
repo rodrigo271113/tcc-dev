@@ -104,6 +104,59 @@ results/
   figs/*.png     latency-vs-size, per-repo boxplots, transfer size, server latency
 ```
 
+## Input integrity (orphan parent rows)
+
+Both implementations rebuild the directory hierarchy from the `identifier`
+column alone -- a node's parent is its identifier minus the trailing
+`/node_name`. Nothing in the format guarantees the parent row exists, and in
+two of the sampled repositories it does not: a directory is referenced as a
+parent by its children but has no row of its own.
+
+| CSV | nodes | orphan parents | rows affected |
+|---|---|---|---|
+| `socket.io` ... `hhvm` | 964 ... 83,071 | 0 | 0 |
+| `Chromium` | 146,201 | 1 | 2 |
+| `Firefox` | 419,572 | 2 | 2 |
+
+The two implementations disagree about what that means. DUKS attaches an
+orphan to the root and renders the rest of the tree. Plotly's treemap trace
+fails to build the hierarchy, reports it as a `console.warn`, and draws
+nothing -- the page stays blank, with no error visible to the user and no
+JavaScript exception. Two malformed rows out of 146,201 decide whether a
+repository renders at all.
+
+Check the ladder before a run:
+
+```bash
+python -m harness.csv_integrity --check ../rep_pack_march6/data/*.csv
+```
+
+Exit status is 1 when any orphan is found, so it can gate a run.
+
+That failure is a result worth reporting, but it also means Plotly cannot be
+*measured* on those two repositories, which is a separate question from
+whether it can render them. To reach the top of the ladder, synthesize the
+missing directory rows:
+
+```bash
+python -m harness.csv_integrity --repair ../rep_pack_march6/data/Chromium.csv \
+    --out ../rep_pack_march6/data/ChromiumRepaired.csv
+python -m harness.csv_integrity --repair ../rep_pack_march6/data/Firefox.csv \
+    --out ../rep_pack_march6/data/FirefoxRepaired.csv
+```
+
+A synthesized row takes its size from the sum of its children and its Pony
+Factor from the lowest among them. **Both values are fabricated**, and every
+synthesized row is printed, so runs that use a repaired file must disclose it.
+In practice the affected nodes are empty directories of zero-length files, so
+the effect on the rendered picture is nil -- but it is still fabricated input.
+The repaired CSVs are large (24 MB and 81 MB) and are not committed; the
+script regenerates them.
+
+With the repaired input, Plotly renders both: 146,202 tiles for Chromium and
+419,574 for Firefox. There is no node-count ceiling -- see the measurements in
+`## What it measures`.
+
 ## Method notes / knobs
 
 - **Settle detection** is one shared definition for both apps: after a marked
